@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<configuration>
+	<appSettings>
+		<add key="filePath" value ="" />
+		<add key="resultPath" value ="" />
+		<add key="blockSize" value ="1024" />
+		<add key="readerCapacity" value ="16" />
+		<add key="flushPeriodWriter" value ="128" />
+		<add key="flushPeriodReader" value ="128" />
+	</appSettings>
+</configuration>

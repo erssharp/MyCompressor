@@ -22,12 +22,14 @@ namespace MyCompressor.Services
         public static bool IsActive { get; private set; }
 
         public static IServiceProvider ServiceProvider => host.Services;
-        
+
         public static void AbortHostWork()
         {
             if (!IsActive) return;
 
             cts.Cancel();
+            host.Dispose();
+
             IsActive = false;
         }
 
@@ -37,7 +39,7 @@ namespace MyCompressor.Services
 
             IsActive = true;
 
-            host.RunAsync(cts.Token);           
+            host.RunAsync(cts.Token);
         }
     }
 }

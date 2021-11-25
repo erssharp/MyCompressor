@@ -9,7 +9,7 @@ namespace MyCompressor.Services
     internal interface IMultiThreadWriter
     {
         int CurBlock { get; }
-        void WriteData(byte[] data);
+        void WriteData(int block, byte[] data);
         void FinishWork();
     }
 }

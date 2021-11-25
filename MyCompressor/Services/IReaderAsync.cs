@@ -10,7 +10,7 @@ namespace MyCompressor.Services
     {
         long BlockCount { get; }
         int CurBlock { get; }
-        bool TryReadNextBlock(out byte[]? data);
+        bool TryReadNextBlock(out (int, byte[]) data, int tryCounter);
         void FinishWork();
     }
 }

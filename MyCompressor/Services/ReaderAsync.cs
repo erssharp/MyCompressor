@@ -11,7 +11,7 @@ namespace MyCompressor.Services
 {
     internal class ReaderAsync : IReaderAsync
     {
-        private readonly ConcurrentQueue<byte[]> dataFromFile = new();
+        private readonly ConcurrentQueue<(int, byte[])> dataFromFile = new();
         private readonly CancellationTokenSource cts = new();
         private readonly CancellationToken token;
         private readonly int maxCapacity;
@@ -23,9 +23,17 @@ namespace MyCompressor.Services
 
         public bool IsActive { get; private set; }
 
-        public bool TryReadNextBlock(out byte[]? data)
+        public bool TryReadNextBlock(out (int, byte[]) data, int tryCounter = 1)
         {
-            return dataFromFile.TryDequeue(out data);
+            if (dataFromFile.TryDequeue(out data))            
+                return true;
+
+            MyLogger.AddMessage($"Failed attemt to read next block. #{tryCounter}");
+            Thread.Sleep(100);
+
+            if (tryCounter == 10)
+                return false;
+            else return TryReadNextBlock(out data, ++tryCounter);
         }
 
         public void FinishWork() => cts.Cancel();
@@ -81,8 +89,10 @@ namespace MyCompressor.Services
                     IsActive = false;
                     return;
                 }
-                FileInfo fileInfo = new FileInfo(filepath);
-                BlockCount = fileInfo.Length / blockSize;
+
+                FileInfo fileInfo = new(filepath);
+                BlockCount = (long)Math.Floor((decimal)fileInfo.Length / blockSize);
+
                 using (FileStream file = File.Open(filepath, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     while (dataFromFile.Count <= maxCapacity)
@@ -90,7 +100,7 @@ namespace MyCompressor.Services
                         byte[] buffer = new byte[blockSize];
                         await file.ReadAsync(buffer.AsMemory(CurBlock * blockSize, blockSize), token);
                         CurBlock++;
-                        dataFromFile.Enqueue(buffer);
+                        dataFromFile.Enqueue((CurBlock, buffer));
                         if (CurBlock % flushPeriod == 0) file.Flush();
                     }
                     file.Flush();

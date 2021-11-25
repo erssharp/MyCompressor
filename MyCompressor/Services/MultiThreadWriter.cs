@@ -11,12 +11,12 @@ namespace MyCompressor.Services
 {
     internal class MultiThreadWriter : IMultiThreadWriter
     {
-        private readonly static ConcurrentQueue<byte[]> dataToWrite = new();
+        private readonly static ConcurrentDictionary<int, byte[]> dataToWrite = new();
         private readonly CancellationTokenSource cts = new();
         private readonly CancellationToken token;
         private readonly int flushPeriod;
 
-        public int CurBlock { get; private set; }       
+        public int CurBlock { get; private set; }
 
         public bool IsActive { get; private set; }
 
@@ -42,9 +42,13 @@ namespace MyCompressor.Services
 
         public void FinishWork() => cts.Cancel();
 
-        public void WriteData(byte[] data)
+        public void WriteData(int block, byte[] data)
         {
-            dataToWrite.Enqueue(data);
+            if (!dataToWrite.TryAdd(block, data))
+            {
+                MyLogger.AddMessage("Attempt to add another element with same block id.");
+                FinishWork();
+            }
         }
 
         private async Task WriteToFile()
@@ -67,12 +71,19 @@ namespace MyCompressor.Services
                     IsActive = false;
                     return;
                 }
+
                 using (FileStream file = File.Open(filepath, FileMode.Append, FileAccess.Write, FileShare.Read))
                 {
-                    while (dataToWrite.TryDequeue(out byte[]? data))
-                    {
+                    while (dataToWrite.TryRemove(CurBlock, out byte[]? data))
+                    {                      
                         if (data != null)
                             await file.WriteAsync(data);
+                        else
+                        {
+                            MyLogger.AddMessage("Attempt to write null.");
+                            IsActive = false;
+                            return;
+                        }
 
                         CurBlock++;
 

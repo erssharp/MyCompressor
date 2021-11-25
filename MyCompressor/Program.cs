@@ -20,13 +20,16 @@ namespace MyCompressor
             try
             {
                 //CheckArguments(args, out string filepath, out string command, out string resultFilepath);
-                string filepath = "tsetup-x64.3.2.5.exe";
-                string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
+                //string filepath = "tsetup-x64.3.2.5.exe";
+               // string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
+                string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\tsetup.exe";
+                string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
                 string command = "compress";
 
                 ServicesHost.StartHost();
+                GZIPCompressor compressor = new();
 
-                result = StartCompression(filepath, resultFilepath) ? 1 : 0;
+                result = compressor.Compress(filepath, resultFilepath, CompressionMode.Decompress) ? 1 : 0;
             }
             catch (Exception ex)
             {
@@ -39,13 +42,6 @@ namespace MyCompressor
             Console.WriteLine(result);
 
             Console.ReadKey();
-        }
-
-        private static bool StartCompression(string filepath, string resultFilepath)
-        {
-            GZIPCompressor compressor = new();
-
-            return compressor.Compress(filepath, resultFilepath);
         }
 
         private static void CheckArguments(string[] args, out string filepath, out string command, out string resultFilepath)

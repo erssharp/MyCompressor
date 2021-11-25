@@ -26,7 +26,7 @@ namespace MyCompressor.Compressors
 
         }
 
-        public bool Compress(string filepath, string resultFilepath)
+        public bool Compress(string filepath, string resultFilepath, CompressionMode mode)
         {
             IMultiThreadWriter? writer = ServicesHost.ServiceProvider.GetService(typeof(IMultiThreadWriter)) as IMultiThreadWriter;
             IReaderAsync? reader = ServicesHost.ServiceProvider.GetService(typeof(IReaderAsync)) as IReaderAsync;
@@ -60,15 +60,30 @@ namespace MyCompressor.Compressors
                         return;
                     }
 
-                    using MemoryStream memory = new();
-                    using GZipStream compressingStream = new(memory, CompressionMode.Compress);
-                    using MemoryStream dataStream = new(data.Item2);
+                    if (mode == CompressionMode.Compress)
+                    {
+                        using MemoryStream memory = new();
+                        using GZipStream compressingStream = new(memory, mode);
+                        using MemoryStream dataStream = new(data.Item2);
 
-                    dataStream.CopyTo(compressingStream);
+                        dataStream.CopyTo(compressingStream);
 
-                    byte[] compressedData = memory.ToArray();    
-                    
-                    writer.WriteData(data.Item1, compressedData);
+                        byte[] compressedData = memory.ToArray();
+
+                        writer.WriteData(data.Item1, compressedData);
+                    }
+                    else
+                    {
+                        using MemoryStream dataStream = new(data.Item2);                      
+                        using GZipStream decompressingStream = new(dataStream, mode);
+                        using MemoryStream memory = new();
+
+                        decompressingStream.CopyTo(memory);
+
+                        byte[] decompressedData = memory.ToArray();
+
+                        writer.WriteData(data.Item1, decompressedData);
+                    }
                 });
 
                 tasks.Add(task);

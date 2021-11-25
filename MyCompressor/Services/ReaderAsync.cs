@@ -31,8 +31,9 @@ namespace MyCompressor.Services
             MyLogger.AddMessage($"Failed attemt to read next block. #{tryCounter}");
             Thread.Sleep(100);
 
-            if (tryCounter == 10)
+            if (tryCounter == 100)
                 return false;
+
             else return TryReadNextBlock(out data, ++tryCounter);
         }
 
@@ -102,8 +103,10 @@ namespace MyCompressor.Services
                     {
                         while (dataFromFile.Count <= maxCapacity)
                         {
-                            byte[] buffer = new byte[blockSize];
-                            await file.ReadAsync(buffer.AsMemory(CurBlock * blockSize, blockSize), token);
+                            int offset = CurBlock * blockSize;
+                            file.Seek(offset, SeekOrigin.Begin);
+                            byte[] buffer = new byte[blockSize];                           
+                            await file.ReadAsync(buffer.AsMemory(0, blockSize));                            
                             dataFromFile.Enqueue((CurBlock, buffer));
                             CurBlock++;
                             if (CurBlock % flushPeriod == 0) file.Flush();

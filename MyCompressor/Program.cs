@@ -15,25 +15,37 @@ namespace MyCompressor
     {
         readonly static HashSet<string> availableCommands = new() { };
         public static void Main(string[] args)
-        {           
+        {
+            int result = -1;
             try
             {
-                CheckArguments(args, out string filepath, out string command, out string resultFilepath);
-
-                ConfigurationManager.AppSettings["filePath"] = filepath;
-                ConfigurationManager.AppSettings["resultPath"] = filepath;
+                //CheckArguments(args, out string filepath, out string command, out string resultFilepath);
+                string filepath = "tsetup-x64.3.2.5.exe";
+                string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
+                string command = "compress";
 
                 ServicesHost.StartHost();
 
-                GZIPCompressor compressor = new();
+                result = StartCompression(filepath, resultFilepath) ? 1 : 0;
             }
             catch (Exception ex)
             {
                 Console.WriteLine("Unhandled Exception: " + ex.Message);
                 Console.WriteLine(ex.StackTrace);
-                Console.WriteLine(0);
+                result = 0;
             }
+
+            MyLogger.ShowLog();
+            Console.WriteLine(result);
+
             Console.ReadKey();
+        }
+
+        private static bool StartCompression(string filepath, string resultFilepath)
+        {
+            GZIPCompressor compressor = new();
+
+            return compressor.Compress(filepath, resultFilepath);
         }
 
         private static void CheckArguments(string[] args, out string filepath, out string command, out string resultFilepath)

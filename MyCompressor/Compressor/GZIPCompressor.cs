@@ -5,73 +5,79 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.IO.Compression;
-using MyCompressor.Exceptions;
+using MyCompressor.Logger;
+using MyCompressor.Services;
+using MyCompressor.Compressor;
 
 namespace MyCompressor.Compressors
 {
-    internal class GZIPCompressor: IDisposable
+    internal class GZIPCompressor : IDisposable
     {
-        readonly int kernelCount;
-        readonly int blockSize;
+
         readonly object block = new();
-        MemoryStream output;
-        public GZIPCompressor(int blockSize = 1024)
+        private readonly List<Task> tasks = new();
+
+        public GZIPCompressor()
         {
-            kernelCount = Environment.ProcessorCount;
-            this.blockSize = blockSize;
-            output = new MemoryStream();
         }
 
         public void Dispose()
         {
-            output.Dispose();
+
         }
 
-        public (bool, Exception) Compress(string filepath, string resultFilepath)
+        public bool Compress(string filepath, string resultFilepath)
         {
-            FileStream input = File.OpenRead(filepath);
+            IMultiThreadWriter? writer = ServicesHost.ServiceProvider.GetService(typeof(IMultiThreadWriter)) as IMultiThreadWriter;
+            IReaderAsync? reader = ServicesHost.ServiceProvider.GetService(typeof(IReaderAsync)) as IReaderAsync;
+            CompressingScheduler scheduler = new();
 
-            File.Create(resultFilepath);
-            FileStream output = File.OpenWrite(resultFilepath);
-
-            int i = 0;
-
-            CancellationTokenSource cts = new();
-
-            ParallelOptions options = new();
-            options.MaxDegreeOfParallelism = kernelCount;
-            options.CancellationToken = cts.Token;
-
-            Parallel.For(i, input.Length, options, (j, state) =>
+            if (reader != null)
+                reader.StartReader(filepath);
+            else
             {
-                byte[] buffer = new byte[blockSize];
-                int bytesRead = 0;
+                MyLogger.AddMessage("Can't get reader service.");
+                return false;
+            }
 
-                lock (block)
-                {
-                    bytesRead = input.Read(buffer, (int)(blockSize * j), blockSize);
-                }
+            if (writer != null)
+                writer.StartWriter(resultFilepath);
+            else
+            {
+                MyLogger.AddMessage("Can't get writer service.");
+                return false;
+            }
 
-                using (MemoryStream memory = new(buffer))
+            long blockCount = reader.BlockCount;
+
+            for (long i = 0; i < blockCount; i++)
+            {
+                Task task = new(() =>
                 {
-                    using (GZipStream gzip = new(memory, CompressionLevel.Optimal))
+                    if (!reader.TryReadNextBlock(out (int, byte[]) data))
                     {
-                        while (j != GetLastFinishedIteration() + 1)
-                            Thread.Sleep(10);
-
-                        lock (block)
-                        {
-                            gzip.CopyTo(output, blockSize);
-                            output.
-                        }
+                        MyLogger.AddMessage("Can't get next block.");
+                        return;
                     }
-                }
 
-                
-            });
+                    using MemoryStream memory = new();
+                    using GZipStream compressingStream = new(memory, CompressionMode.Compress);
+                    using MemoryStream dataStream = new(data.Item2);
 
-            //input.
-            throw new Exception();
+                    dataStream.CopyTo(compressingStream);
+
+                    byte[] compressedData = memory.ToArray();    
+                    
+                    writer.WriteData(data.Item1, compressedData);
+                });
+
+                tasks.Add(task);
+                task.Start(scheduler);
+            }
+
+            Task.WaitAll(tasks.ToArray());
+
+            return true;
         }
     }
 }

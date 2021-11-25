@@ -35,15 +35,18 @@ namespace MyCompressor.Services
             }
 
             token = cts.Token;
-            Task.Run(WriteToFile, token);
-            MyLogger.AddMessage("Writer started it's work");
-            IsActive = true;
         }
 
-        public void FinishWork() => cts.Cancel();
+        public void FinishWork()
+        {
+            cts.Cancel();
+            IsActive = false;
+        }
 
         public void WriteData(int block, byte[] data)
         {
+            if (!IsActive) return;
+
             if (!dataToWrite.TryAdd(block, data))
             {
                 MyLogger.AddMessage("Attempt to add another element with same block id.");
@@ -51,17 +54,18 @@ namespace MyCompressor.Services
             }
         }
 
-        private async Task WriteToFile()
+        public void StartWriter(string filepath)
+        {
+            if (IsActive) return;
+
+            Task.Run(() => WriteToFile(filepath), token);
+            MyLogger.AddMessage("Writer started it's work");
+            IsActive = true;
+        }
+
+        private async Task WriteToFile(string filepath)
         {
             CurBlock = 0;
-            string? filepath = ConfigurationManager.AppSettings["resultPath"];
-
-            if (filepath == null)
-            {
-                MyLogger.AddMessage("Could not get the result path from configuration. Writer's work was terminated.");
-                IsActive = false;
-                return;
-            }
 
             while (true)
             {
@@ -75,7 +79,7 @@ namespace MyCompressor.Services
                 using (FileStream file = File.Open(filepath, FileMode.Append, FileAccess.Write, FileShare.Read))
                 {
                     while (dataToWrite.TryRemove(CurBlock, out byte[]? data))
-                    {                      
+                    {
                         if (data != null)
                             await file.WriteAsync(data);
                         else

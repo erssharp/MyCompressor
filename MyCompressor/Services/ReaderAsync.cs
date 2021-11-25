@@ -36,7 +36,11 @@ namespace MyCompressor.Services
             else return TryReadNextBlock(out data, ++tryCounter);
         }
 
-        public void FinishWork() => cts.Cancel();
+        public void FinishWork()
+        {
+            cts.Cancel();
+            IsActive = false;
+        }
 
         public ReaderAsync()
         {
@@ -65,21 +69,23 @@ namespace MyCompressor.Services
             }
 
             token = cts.Token;
-
-            Task.Run(ReadFromFile, token);
         }
 
-        private async Task ReadFromFile()
+        public void StartReader(string filepath)
         {
-            CurBlock = 0;
-            string? filepath = ConfigurationManager.AppSettings["filePath"];
+            if (IsActive) return;
 
-            if (filepath == null)
-            {
-                MyLogger.AddMessage("Could not get the file path from configuration. Reader's work was terminated.");
-                IsActive = false;
-                return;
-            }
+            FileInfo fileInfo = new(filepath);
+            BlockCount = (long)Math.Ceiling((decimal)fileInfo.Length / blockSize);
+
+            Task.Run(() => ReadFromFile(filepath), token);
+            MyLogger.AddMessage("Reader has started.");
+            IsActive = true;
+        }
+        
+        private async Task ReadFromFile(string filepath)
+        {
+            CurBlock = 0;         
 
             while (true)
             {
@@ -89,22 +95,28 @@ namespace MyCompressor.Services
                     IsActive = false;
                     return;
                 }
-
-                FileInfo fileInfo = new(filepath);
-                BlockCount = (long)Math.Floor((decimal)fileInfo.Length / blockSize);
-
+                
                 using (FileStream file = File.Open(filepath, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
-                    while (dataFromFile.Count <= maxCapacity)
+                    try
                     {
-                        byte[] buffer = new byte[blockSize];
-                        await file.ReadAsync(buffer.AsMemory(CurBlock * blockSize, blockSize), token);
-                        CurBlock++;
-                        dataFromFile.Enqueue((CurBlock, buffer));
-                        if (CurBlock % flushPeriod == 0) file.Flush();
+                        while (dataFromFile.Count <= maxCapacity)
+                        {
+                            byte[] buffer = new byte[blockSize];
+                            await file.ReadAsync(buffer.AsMemory(CurBlock * blockSize, blockSize), token);
+                            dataFromFile.Enqueue((CurBlock, buffer));
+                            CurBlock++;
+                            if (CurBlock % flushPeriod == 0) file.Flush();
+                        }
+                        file.Flush();
+                        Thread.Sleep(50);
+                        if (CurBlock == BlockCount) break;
                     }
-                    file.Flush();
-                    Thread.Sleep(50);
+                    catch (Exception ex)
+                    {
+                        MyLogger.AddMessage(ex.Message);
+                        break;
+                    }
                 }
             }
         }

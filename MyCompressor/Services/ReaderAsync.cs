@@ -1,8 +1,10 @@
 ﻿using MyCompressor.Logger;
+using MyCompressor.Structures;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Configuration;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -11,29 +13,30 @@ namespace MyCompressor.Services
 {
     internal class ReaderAsync : IReaderAsync
     {
-        private readonly ConcurrentQueue<(int, byte[])> dataFromFile = new();
+        private readonly ConcurrentQueue<DataBlock> dataFromFile = new();
         private readonly CancellationTokenSource cts = new();
         private readonly CancellationToken token;
         private readonly int maxCapacity;
         private readonly int blockSize;
         private readonly int flushPeriod;
+        private CompressionMode mode;
+        private int decompressedOffset = 8;
 
         public int CurBlock { get; private set; }
-        public long BlockCount { get; private set; }
+        public ulong BlockCount { get; private set; }
 
         public bool IsActive { get; private set; }
 
-        public bool TryReadNextBlock(out (int, byte[]) data, int tryCounter = 1)
+        public bool TryReadNextBlock(out DataBlock data, int tryCounter = 1)
         {
-            if (dataFromFile.TryDequeue(out data))            
+            if (dataFromFile.TryDequeue(out data))
                 return true;
 
-            MyLogger.AddMessage($"Failed attemt to read next block. #{tryCounter}");
+            //MyLogger.AddMessage($"Thread {Environment.CurrentManagedThreadId}: Failed attemt to read next block. #{tryCounter}");
             Thread.Sleep(100);
 
             if (tryCounter == 100)
                 return false;
-
             else return TryReadNextBlock(out data, ++tryCounter);
         }
 
@@ -72,21 +75,34 @@ namespace MyCompressor.Services
             token = cts.Token;
         }
 
-        public void StartReader(string filepath)
+        public void StartReader(string filepath, CompressionMode mode)
         {
             if (IsActive) return;
 
+            this.mode = mode;
             FileInfo fileInfo = new(filepath);
-            BlockCount = (long)Math.Ceiling((decimal)fileInfo.Length / blockSize);
+            if (mode == CompressionMode.Compress)
+            {
+                BlockCount = (ulong)Math.Ceiling((decimal)fileInfo.Length / blockSize);
+            }
+            else
+            {
+                using (FileStream fileStream = new(filepath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    byte[] countBytes = new byte[8];
+                    fileStream.Read(countBytes, 0, 8);
+                    BlockCount = BitConverter.ToUInt64(countBytes, 0);
+                }
+            }
 
             Task.Run(() => ReadFromFile(filepath), token);
             MyLogger.AddMessage("Reader has started.");
             IsActive = true;
         }
-        
+
         private async Task ReadFromFile(string filepath)
         {
-            CurBlock = 0;         
+            CurBlock = 0;
 
             while (true)
             {
@@ -96,24 +112,58 @@ namespace MyCompressor.Services
                     IsActive = false;
                     return;
                 }
-                
+
                 using (FileStream file = File.Open(filepath, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     try
                     {
                         while (dataFromFile.Count <= maxCapacity)
                         {
-                            int offset = CurBlock * blockSize;
-                            file.Seek(offset, SeekOrigin.Begin);
-                            byte[] buffer = new byte[blockSize];                           
-                            await file.ReadAsync(buffer.AsMemory(0, blockSize));                            
-                            dataFromFile.Enqueue((CurBlock, buffer));
-                            CurBlock++;
+                            if (mode == CompressionMode.Compress)
+                            {
+                                int offset = CurBlock * blockSize;
+                                file.Seek(offset, SeekOrigin.Begin);
+                                byte[] buffer = new byte[blockSize];
+                                await file.ReadAsync(buffer.AsMemory(0, blockSize));
+                                DataBlock data = new()
+                                {
+                                    Data = buffer,
+                                    Offset = offset,
+                                    Id = CurBlock
+                                };
+                                dataFromFile.Enqueue(data);
+                                CurBlock++;
+                            }
+                            else
+                            {
+                                file.Seek(decompressedOffset, SeekOrigin.Begin);
+
+                                byte[] dataLength = new byte[4];
+                                file.Read(dataLength, 0, dataLength.Length);
+                                decompressedOffset += dataLength.Length;
+
+                                int compressedBlockSize = BitConverter.ToInt32(dataLength);
+                                file.Seek(decompressedOffset, SeekOrigin.Begin);
+
+                                byte[] buffer = new byte[compressedBlockSize];
+                                await file.ReadAsync(buffer.AsMemory(0, compressedBlockSize));
+
+                                DataBlock data = new()
+                                {
+                                    Data = buffer,
+                                    Offset = decompressedOffset,
+                                    Id = CurBlock
+                                };
+
+                                decompressedOffset += compressedBlockSize;
+                                dataFromFile.Enqueue(data);
+                                CurBlock++;
+                            }
                             if (CurBlock % flushPeriod == 0) file.Flush();
                         }
                         file.Flush();
                         Thread.Sleep(50);
-                        if (CurBlock == BlockCount) break;
+                        if ((ulong)CurBlock == BlockCount) break;
                     }
                     catch (Exception ex)
                     {

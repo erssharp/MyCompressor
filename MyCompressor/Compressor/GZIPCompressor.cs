@@ -8,6 +8,7 @@ using System.IO.Compression;
 using MyCompressor.Logger;
 using MyCompressor.Services;
 using MyCompressor.Compressor;
+using MyCompressor.Structures;
 
 namespace MyCompressor.Compressors
 {
@@ -28,61 +29,71 @@ namespace MyCompressor.Compressors
 
         public bool Compress(string filepath, string resultFilepath, CompressionMode mode)
         {
-            IMultiThreadWriter? writer = ServicesHost.ServiceProvider.GetService(typeof(IMultiThreadWriter)) as IMultiThreadWriter;
-            IReaderAsync? reader = ServicesHost.ServiceProvider.GetService(typeof(IReaderAsync)) as IReaderAsync;
+            IMultiThreadWriter writer = new MultiThreadWriter();
+            IReaderAsync reader = new ReaderAsync();
             CompressingScheduler scheduler = new();
 
-            if (reader != null)
-                reader.StartReader(filepath);
-            else
-            {
-                MyLogger.AddMessage("Can't get reader service.");
-                return false;
-            }
+            reader.StartReader(filepath, mode);
+            ulong blockCount = reader.BlockCount;
+            writer.StartWriter(resultFilepath, blockCount, mode);
+            object blocker = new object();
 
-            if (writer != null)
-                writer.StartWriter(resultFilepath);
-            else
-            {
-                MyLogger.AddMessage("Can't get writer service.");
-                return false;
-            }
-
-            long blockCount = reader.BlockCount;
-
-            for (long i = 0; i < blockCount; i++)
+            for (ulong i = 0; i < blockCount; i++)
             {
                 Task task = new(() =>
                 {
-                    if (!reader.TryReadNextBlock(out (int, byte[]) data))
+                    DataBlock data;
+
+                    if (!reader.TryReadNextBlock(out data))
                     {
                         MyLogger.AddMessage("Can't get next block.");
                         return;
                     }
 
+                    if (data.Data == null)
+                    {
+                        MyLogger.AddMessage("Attemt to compress/decompress null data.");
+                        return;
+                    }
+
                     if (mode == CompressionMode.Compress)
                     {
+                        Console.WriteLine("START " + data.Length);
                         using MemoryStream memory = new();
                         using GZipStream compressingStream = new(memory, mode);
-                        using MemoryStream dataStream = new(data.Item2);
+                        using MemoryStream dataStream = new(data.Data);
 
                         dataStream.CopyTo(compressingStream);
 
                         byte[] compressedData = memory.ToArray();
+                        Console.WriteLine("END " + compressedData.Length);
+                        DataBlock compressedBlock = new()
+                        {
+                            Id = data.Id,
+                            Data = compressedData
+                        };
 
-                        writer.WriteData(data.Item1, compressedData);
+                        writer.WriteData(compressedBlock);
                     }
                     else
                     {
-                        using MemoryStream dataStream = new(data.Item2);                      
+                        Console.WriteLine($"CM: {data.Length}");
+                        using MemoryStream dataStream = new(data.Data);
                         using GZipStream decompressingStream = new(dataStream, mode);
                         using MemoryStream memory = new();
 
                         decompressingStream.CopyTo(memory);
 
                         byte[] decompressedData = memory.ToArray();
+                        Console.WriteLine($"DCM: {decompressedData.Length}");
 
-                        writer.WriteData(data.Item1, decompressedData);
+                        DataBlock decompressedBlock = new()
+                        {
+                            Id = data.Id,
+                            Data = decompressedData
+                        };
+
+                        writer.WriteData(decompressedBlock);
                     }
                 });
 

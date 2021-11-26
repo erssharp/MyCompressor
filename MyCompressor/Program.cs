@@ -20,16 +20,27 @@ namespace MyCompressor
             try
             {
                 //CheckArguments(args, out string filepath, out string command, out string resultFilepath);
-                //string filepath = "tsetup-x64.3.2.5.exe";
-               // string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
-                string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\tsetup.exe";
-                string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
+                
+                
                 string command = "compress";
 
-                ServicesHost.StartHost();
+                //ServicesHost.StartHost();
                 GZIPCompressor compressor = new();
 
-                result = compressor.Compress(filepath, resultFilepath, CompressionMode.Decompress) ? 1 : 0;
+                if (false)
+                {
+                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\tsetup.exe";
+                    string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
+                    if (File.Exists(resultFilepath)) File.Delete(resultFilepath);
+                    result = compressor.Compress(filepath, resultFilepath, CompressionMode.Decompress) ? 1 : 0;
+                }
+                else
+                {
+                    string filepath = "tsetup-x64.3.2.5.exe";
+                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
+                    if(File.Exists(resultFilepath)) File.Delete(resultFilepath);
+                    result = compressor.Compress(filepath, resultFilepath, CompressionMode.Compress) ? 1 : 0;
+                }
             }
             catch (Exception ex)
             {

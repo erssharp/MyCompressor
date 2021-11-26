@@ -6,6 +6,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Configuration;
 using MyCompressor.Logger;
+using System.IO.Compression;
+using MyCompressor.Structures;
 
 namespace MyCompressor.Services
 {
@@ -15,7 +17,9 @@ namespace MyCompressor.Services
         private readonly CancellationTokenSource cts = new();
         private readonly CancellationToken token;
         private readonly int flushPeriod;
+        private CompressionMode mode;
 
+        public ulong BlockCount { get; private set; }
         public int CurBlock { get; private set; }
 
         public bool IsActive { get; private set; }
@@ -43,21 +47,30 @@ namespace MyCompressor.Services
             IsActive = false;
         }
 
-        public void WriteData(int block, byte[] data)
+        public void WriteData(DataBlock data)
         {
             if (!IsActive) return;
 
-            if (!dataToWrite.TryAdd(block, data))
+            if (data.Data != null)
             {
-                MyLogger.AddMessage("Attempt to add another element with same block id.");
+                if (!dataToWrite.TryAdd(data.Id, data.Data))
+                {
+                    MyLogger.AddMessage("Attempt to add another element with same block id.");
+                    FinishWork();
+                }
+            }
+            else
+            {
+                MyLogger.AddMessage("Attempt to write null.");
                 FinishWork();
             }
         }
 
-        public void StartWriter(string filepath)
+        public void StartWriter(string filepath, ulong blockCount, CompressionMode mode)
         {
             if (IsActive) return;
-
+            this.mode = mode;
+            BlockCount = blockCount;
             Task.Run(() => WriteToFile(filepath), token);
             MyLogger.AddMessage("Writer started it's work");
             IsActive = true;
@@ -80,6 +93,18 @@ namespace MyCompressor.Services
                 {
                     while (dataToWrite.TryRemove(CurBlock, out byte[]? data))
                     {
+                        if (mode == CompressionMode.Compress)
+                        {
+                            if (CurBlock == 0)
+                            {
+                                byte[] length = BitConverter.GetBytes(BlockCount);
+                                file.Write(length, 0, 8);
+                            }
+
+                            byte[] dataLength = BitConverter.GetBytes(data.Length);
+                            file.Write(dataLength);
+                        }
+
                         if (data != null)
                             await file.WriteAsync(data);
                         else

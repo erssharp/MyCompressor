@@ -13,7 +13,7 @@ namespace MyCompressor.Services
         ulong BlockCount { get; }
         int CurBlock { get; }
         void StartReader(string filepath, CompressionMode mode);
-        bool TryReadNextBlock(out DataBlock data, int tryCounter = 1);
+        Task<DataBlock> ReadNextBlock();
         void FinishWork();
     }
 }

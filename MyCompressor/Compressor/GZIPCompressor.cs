@@ -40,15 +40,9 @@ namespace MyCompressor.Compressors
 
             for (ulong i = 0; i < blockCount; i++)
             {
-                Task task = new(() =>
+                Task task = new(async () =>
                 {
-                    DataBlock data;
-
-                    if (!reader.TryReadNextBlock(out data))
-                    {
-                        MyLogger.AddMessage("Can't get next block.");
-                        return;
-                    }
+                    DataBlock data = await reader.ReadNextBlock();
 
                     if (data.Data == null)
                     {
@@ -59,21 +53,24 @@ namespace MyCompressor.Compressors
                     if (mode == CompressionMode.Compress)
                     {
                         Console.WriteLine("START " + data.Length);
-                        using MemoryStream memory = new();
-                        using GZipStream compressingStream = new(memory, mode);
-                        using MemoryStream dataStream = new(data.Data);
-
-                        dataStream.CopyTo(compressingStream);
-
-                        byte[] compressedData = memory.ToArray();
-                        Console.WriteLine("END " + compressedData.Length);
-                        DataBlock compressedBlock = new()
+                        using (MemoryStream memory = new())
+                        using (GZipStream compressingStream = new(memory, mode))
+                        using (MemoryStream dataStream = new(data.Data))
                         {
-                            Id = data.Id,
-                            Data = compressedData
-                        };
+                            dataStream.CopyTo(compressingStream);
 
-                        writer.WriteData(compressedBlock);
+                            byte[] compressedData = memory.ToArray();
+
+                            Console.WriteLine("END " + compressedData.Length);
+                            DataBlock compressedBlock = new()
+                            {
+                                Id = data.Id,
+                                Data = compressedData
+                            };
+
+                            writer.WriteData(compressedBlock);
+                        }
+
                     }
                     else
                     {
@@ -102,6 +99,8 @@ namespace MyCompressor.Compressors
             }
 
             Task.WaitAll(tasks.ToArray());
+            reader.FinishWork();
+            writer.FinishWork();
 
             return true;
         }

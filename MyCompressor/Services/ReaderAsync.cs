@@ -27,17 +27,18 @@ namespace MyCompressor.Services
 
         public bool IsActive { get; private set; }
 
-        public bool TryReadNextBlock(out DataBlock data, int tryCounter = 1)
+        public async Task<DataBlock> ReadNextBlock()
         {
-            if (dataFromFile.TryDequeue(out data))
-                return true;
+            while (true)
+            {
+                lock (dataFromFile)
+                {
+                    if (dataFromFile.TryDequeue(out DataBlock data))
+                        return data;
+                }
 
-            //MyLogger.AddMessage($"Thread {Environment.CurrentManagedThreadId}: Failed attemt to read next block. #{tryCounter}");
-            Thread.Sleep(100);
-
-            if (tryCounter == 100)
-                return false;
-            else return TryReadNextBlock(out data, ++tryCounter);
+                await Task.Delay(100);
+            }
         }
 
         public void FinishWork()

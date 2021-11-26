@@ -41,8 +41,13 @@ namespace MyCompressor.Services
             token = cts.Token;
         }
 
-        public void FinishWork()
+        public async Task FinishWork()
         {
+            while (true)
+                if (!dataToWrite.IsEmpty)
+                    await Task.Delay(100);
+                else break;
+
             cts.Cancel();
             IsActive = false;
         }
@@ -89,6 +94,8 @@ namespace MyCompressor.Services
                     return;
                 }
 
+                if (dataToWrite.IsEmpty) continue;
+
                 using (FileStream file = File.Open(filepath, FileMode.Append, FileAccess.Write, FileShare.Read))
                 {
                     while (dataToWrite.TryRemove(CurBlock, out byte[]? data))
@@ -116,7 +123,7 @@ namespace MyCompressor.Services
 
                         CurBlock++;
 
-                        if (CurBlock % flushPeriod == 0) file.Flush();
+                        file.Flush();
                     }
                     file.Flush();
                     Thread.Sleep(50);

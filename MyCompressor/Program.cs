@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using MyCompressor.Compressors;
+﻿using MyCompressor.Compressors;
 using MyCompressor.Services;
 using System;
 using System.Collections.Generic;
@@ -27,7 +25,7 @@ namespace MyCompressor
                 //ServicesHost.StartHost();
                 GZIPCompressor compressor = new();
 
-                if (false)
+                if (true)
                 {
                     string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\tsetup.exe";
                     string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";

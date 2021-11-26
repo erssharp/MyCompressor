@@ -13,6 +13,6 @@ namespace MyCompressor.Services
         int CurBlock { get; }
         void StartWriter(string filepath, ulong blockCount, CompressionMode mode);
         void WriteData(DataBlock data);
-        void FinishWork();
+        Task FinishWork();
     }
 }

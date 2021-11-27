@@ -36,7 +36,6 @@ namespace MyCompressor.Compressors
             reader.StartReader(filepath, mode);
             ulong blockCount = reader.BlockCount;
             writer.StartWriter(resultFilepath, blockCount, mode);
-            object blocker = new object();
 
             for (ulong i = 0; i < blockCount; i++)
             {
@@ -54,10 +53,10 @@ namespace MyCompressor.Compressors
                     {
                         Console.WriteLine("START " + data.Length);
                         using (MemoryStream memory = new())
-                        using (GZipStream compressingStream = new(memory, mode))
-                        using (MemoryStream dataStream = new(data.Data))
                         {
-                            dataStream.CopyTo(compressingStream);
+                            using (MemoryStream dataStream = new(data.Data))
+                            using (GZipStream compressingStream = new(memory, mode))
+                                dataStream.CopyTo(compressingStream);
 
                             byte[] compressedData = memory.ToArray();
 
@@ -65,7 +64,8 @@ namespace MyCompressor.Compressors
                             DataBlock compressedBlock = new()
                             {
                                 Id = data.Id,
-                                Data = compressedData
+                                Data = compressedData,
+                                OrigignalSize = data.OrigignalSize
                             };
 
                             writer.WriteData(compressedBlock);
@@ -75,22 +75,25 @@ namespace MyCompressor.Compressors
                     else
                     {
                         Console.WriteLine($"CM: {data.Length}");
-                        using MemoryStream dataStream = new(data.Data);
-                        using GZipStream decompressingStream = new(dataStream, mode);
-                        using MemoryStream memory = new();
-
-                        decompressingStream.CopyTo(memory);
-
-                        byte[] decompressedData = memory.ToArray();
-                        Console.WriteLine($"DCM: {decompressedData.Length}");
-
-                        DataBlock decompressedBlock = new()
+                        using (MemoryStream memory = new(new byte[data.OrigignalSize]))
                         {
-                            Id = data.Id,
-                            Data = decompressedData
-                        };
+                            using (MemoryStream dataStream = new(data.Data))
+                            using (GZipStream decompressingStream = new(dataStream, mode))
+                                decompressingStream.CopyTo(memory);
 
-                        writer.WriteData(decompressedBlock);
+                            byte[] decompressedData = memory.ToArray();
+
+                            Console.WriteLine($"DCM: {decompressedData.Length}");
+
+                            DataBlock decompressedBlock = new()
+                            {
+                                Id = data.Id,
+                                Data = decompressedData,
+                                OrigignalSize = data.OrigignalSize
+                            };
+
+                            writer.WriteData(decompressedBlock);
+                        }
                     }
                 });
 
@@ -99,8 +102,8 @@ namespace MyCompressor.Compressors
             }
 
             Task.WaitAll(tasks.ToArray());
-            reader.FinishWork();
-            writer.FinishWork();
+            //reader.FinishWork();
+            //writer.FinishWork();
 
             return true;
         }

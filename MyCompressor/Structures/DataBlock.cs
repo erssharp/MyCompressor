@@ -10,6 +10,7 @@ namespace MyCompressor.Structures
     {
         public int Id;
         public int Offset;
+        public int OrigignalSize;
         public int Length => Data == null ? -1 : Data.Length;
         public byte[]? Data;
     }

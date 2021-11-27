@@ -13,7 +13,7 @@ namespace MyCompressor.Services
 {
     internal class MultiThreadWriter : IMultiThreadWriter
     {
-        private readonly static ConcurrentDictionary<int, byte[]> dataToWrite = new();
+        private readonly static ConcurrentDictionary<int, DataBlock> dataToWrite = new();
         private readonly CancellationTokenSource cts = new();
         private readonly CancellationToken token;
         private readonly int flushPeriod;
@@ -58,7 +58,7 @@ namespace MyCompressor.Services
 
             if (data.Data != null)
             {
-                if (!dataToWrite.TryAdd(data.Id, data.Data))
+                if (!dataToWrite.TryAdd(data.Id, data))
                 {
                     MyLogger.AddMessage("Attempt to add another element with same block id.");
                     FinishWork();
@@ -81,7 +81,7 @@ namespace MyCompressor.Services
             IsActive = true;
         }
 
-        private async Task WriteToFile(string filepath)
+        private void WriteToFile(string filepath)
         {
             CurBlock = 0;
 
@@ -98,7 +98,7 @@ namespace MyCompressor.Services
 
                 using (FileStream file = File.Open(filepath, FileMode.Append, FileAccess.Write, FileShare.Read))
                 {
-                    while (dataToWrite.TryRemove(CurBlock, out byte[]? data))
+                    while (dataToWrite.TryRemove(CurBlock, out DataBlock data))
                     {
                         if (mode == CompressionMode.Compress)
                         {
@@ -110,17 +110,19 @@ namespace MyCompressor.Services
 
                             byte[] dataLength = BitConverter.GetBytes(data.Length);
                             file.Write(dataLength);
+                            byte[] originalSize = BitConverter.GetBytes(data.OrigignalSize);
+                            file.Write(originalSize);
                         }
 
-                        if (data != null)
-                            await file.WriteAsync(data);
+                        if (data.Data != null)
+                            file.Write(data.Data);
                         else
                         {
                             MyLogger.AddMessage("Attempt to write null.");
                             IsActive = false;
                             return;
                         }
-
+                        Console.WriteLine("Writer " + CurBlock);
                         CurBlock++;
 
                         file.Flush();

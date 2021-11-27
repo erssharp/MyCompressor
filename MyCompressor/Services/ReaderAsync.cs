@@ -101,9 +101,10 @@ namespace MyCompressor.Services
             IsActive = true;
         }
 
-        private async Task ReadFromFile(string filepath)
+        private void ReadFromFile(string filepath)
         {
             CurBlock = 0;
+            decompressedOffset = 8;
 
             while (true)
             {
@@ -118,21 +119,29 @@ namespace MyCompressor.Services
                 {
                     try
                     {
-                        while (dataFromFile.Count <= maxCapacity)
+                        while (dataFromFile.Count <= maxCapacity && file.Position < file.Length)
                         {
                             if (mode == CompressionMode.Compress)
                             {
                                 int offset = CurBlock * blockSize;
                                 file.Seek(offset, SeekOrigin.Begin);
-                                byte[] buffer = new byte[blockSize];
-                                await file.ReadAsync(buffer.AsMemory(0, blockSize));
+
+                                int length = 
+                                    file.Length - file.Position <= blockSize
+                                    ? (int)(file.Length - file.Position)
+                                    : blockSize;
+                                
+                                byte[] buffer = new byte[length];
+                                file.Read(buffer, 0, length);
                                 DataBlock data = new()
                                 {
                                     Data = buffer,
                                     Offset = offset,
+                                    OrigignalSize = length,
                                     Id = CurBlock
                                 };
                                 dataFromFile.Enqueue(data);
+                                Console.WriteLine("Reader: " + CurBlock);
                                 CurBlock++;
                             }
                             else
@@ -143,19 +152,27 @@ namespace MyCompressor.Services
                                 file.Read(dataLength, 0, dataLength.Length);
                                 decompressedOffset += dataLength.Length;
 
+                                file.Seek(decompressedOffset, SeekOrigin.Begin);
+
+                                byte[] originalSizeBytes = new byte[4];
+                                file.Read(originalSizeBytes, 0, originalSizeBytes.Length);
+                                decompressedOffset += originalSizeBytes.Length;
+
                                 int compressedBlockSize = BitConverter.ToInt32(dataLength);
+                                int originalSize = BitConverter.ToInt32(originalSizeBytes);
                                 file.Seek(decompressedOffset, SeekOrigin.Begin);
 
                                 byte[] buffer = new byte[compressedBlockSize];
-                                await file.ReadAsync(buffer.AsMemory(0, compressedBlockSize));
+                                file.Read(buffer, 0, compressedBlockSize);
 
                                 DataBlock data = new()
                                 {
                                     Data = buffer,
                                     Offset = decompressedOffset,
+                                    OrigignalSize = originalSize,
                                     Id = CurBlock
                                 };
-
+                                Console.WriteLine("Reader: " + CurBlock);
                                 decompressedOffset += compressedBlockSize;
                                 dataFromFile.Enqueue(data);
                                 CurBlock++;
@@ -164,7 +181,12 @@ namespace MyCompressor.Services
                         }
                         file.Flush();
                         Thread.Sleep(50);
-                        if ((ulong)CurBlock == BlockCount) break;
+                        if ((ulong)CurBlock == BlockCount)
+                        {
+                            MyLogger.AddMessage("Reader finished it's work.");
+                            IsActive = false;
+                            break;
+                        }
                     }
                     catch (Exception ex)
                     {

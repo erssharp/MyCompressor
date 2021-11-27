@@ -22,7 +22,6 @@ namespace MyCompressor
                 
                 string command = "compress";
 
-                //ServicesHost.StartHost();
                 GZIPCompressor compressor = new();
 
                 if (true)

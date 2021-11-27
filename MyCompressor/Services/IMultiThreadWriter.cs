@@ -1,18 +1,17 @@
 ﻿using MyCompressor.Structures;
-using System;
-using System.Collections.Generic;
 using System.IO.Compression;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace MyCompressor.Services
 {
     internal interface IMultiThreadWriter
     {
-        int CurBlock { get; }
-        void StartWriter(string filepath, ulong blockCount, CompressionMode mode);
-        void WriteData(DataBlock data);
+        long BlockCount { get; }
+        long CurBlock { get; }
+        bool IsActive { get; }
+        void StartWriter(string filepath, long blockCount, CompressionMode mode);
+        Task WriteData(DataBlock data);
+        Task WaitTillFinish();
+        void Abort();
         Task FinishWork();
     }
 }

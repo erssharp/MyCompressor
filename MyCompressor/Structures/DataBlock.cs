@@ -8,8 +8,7 @@ namespace MyCompressor.Structures
 {
     internal struct DataBlock
     {
-        public int Id;
-        public int Offset;
+        public long Id;
         public int OrigignalSize;
         public int Length => Data == null ? -1 : Data.Length;
         public byte[]? Data;

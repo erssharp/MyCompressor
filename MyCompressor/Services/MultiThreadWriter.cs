@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections.Concurrent;
 using System.Configuration;
 using MyCompressor.Logger;
 using System.IO.Compression;
@@ -11,18 +6,9 @@ using MyCompressor.Structures;
 
 namespace MyCompressor.Services
 {
-    internal class MultiThreadWriter : IMultiThreadWriter
+    internal class MultiThreadWriter : MultiThreadWorker, IMultiThreadWriter
     {
-        private readonly static ConcurrentDictionary<int, DataBlock> dataToWrite = new();
-        private readonly CancellationTokenSource cts = new();
-        private readonly CancellationToken token;
-        private readonly int flushPeriod;
-        private CompressionMode mode;
-
-        public ulong BlockCount { get; private set; }
-        public int CurBlock { get; private set; }
-
-        public bool IsActive { get; private set; }
+        private readonly static ConcurrentDictionary<long, DataBlock> dataToWrite = new();
 
         public MultiThreadWriter()
         {
@@ -35,6 +21,12 @@ namespace MyCompressor.Services
             if (flushPeriod < 1 || flushPeriod > 256)
             {
                 MyLogger.AddMessage("Writer: Flush period should be in range [1;256]. It's work was terminated.");
+                return;
+            }
+
+            if (!int.TryParse(ConfigurationManager.AppSettings["writerCapacity"], out maxCapacity))
+            {
+                MyLogger.AddMessage("Writer can not get max capacity from configuration. It's work was terminated.");
                 return;
             }
 
@@ -52,33 +44,48 @@ namespace MyCompressor.Services
             IsActive = false;
         }
 
-        public void WriteData(DataBlock data)
+        public void Abort()
+        {
+            cts.Cancel();
+            IsActive = false;
+        }
+
+        public async Task WriteData(DataBlock data)
         {
             if (!IsActive) return;
+
+            while (dataToWrite.Count > maxCapacity)
+                await Task.Delay(50);
 
             if (data.Data != null)
             {
                 if (!dataToWrite.TryAdd(data.Id, data))
                 {
                     MyLogger.AddMessage("Attempt to add another element with same block id.");
-                    FinishWork();
+                    Abort();
                 }
             }
             else
             {
                 MyLogger.AddMessage("Attempt to write null.");
-                FinishWork();
+                Abort();
             }
         }
 
-        public void StartWriter(string filepath, ulong blockCount, CompressionMode mode)
+        public async Task WaitTillFinish()
+        {
+            while (IsActive)
+                await Task.Delay(100);
+        }
+
+        public void StartWriter(string filepath, long blockCount, CompressionMode mode)
         {
             if (IsActive) return;
             this.mode = mode;
-            BlockCount = blockCount;
-            Task.Run(() => WriteToFile(filepath), token);
+            BlockCount = blockCount;        
             MyLogger.AddMessage("Writer started it's work");
             IsActive = true;
+            Task.Run(() => WriteToFile(filepath), token);
         }
 
         private void WriteToFile(string filepath)
@@ -94,7 +101,7 @@ namespace MyCompressor.Services
                     return;
                 }
 
-                if (dataToWrite.IsEmpty) continue;
+                //if (dataToWrite.IsEmpty) continue;
 
                 using (FileStream file = File.Open(filepath, FileMode.Append, FileAccess.Write, FileShare.Read))
                 {
@@ -122,7 +129,6 @@ namespace MyCompressor.Services
                             IsActive = false;
                             return;
                         }
-                        Console.WriteLine("Writer " + CurBlock);
                         CurBlock++;
 
                         file.Flush();

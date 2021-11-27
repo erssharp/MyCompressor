@@ -17,27 +17,27 @@ namespace MyCompressor
             int result = -1;
             try
             {
-                //CheckArguments(args, out string filepath, out string command, out string resultFilepath);
-                
-                
-                string command = "compress";
-
                 GZIPCompressor compressor = new();
-
+#if DEBUG
                 if (true)
                 {
-                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\tsetup.exe";
-                    string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
+                    string resultFilepath = @"C:\Users\ernestteregulov\Downloads\SpaceSweepers.mp4";
+                    string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\space.gz";
                     if (File.Exists(resultFilepath)) File.Delete(resultFilepath);
-                    result = compressor.Compress(filepath, resultFilepath, CompressionMode.Decompress) ? 1 : 0;
+                    result = compressor.Start(filepath, resultFilepath, CompressionMode.Decompress) ? 1 : 0;
                 }
                 else
                 {
-                    string filepath = "tsetup-x64.3.2.5.exe";
-                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\telegram.gz";
+                    string filepath = @"C:\Users\ernestteregulov\Downloads\SpaceSweepers.1080p.WEBRip.x264.AAC.Zetflix.mp4";
+                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\space.gz";
                     if(File.Exists(resultFilepath)) File.Delete(resultFilepath);
-                    result = compressor.Compress(filepath, resultFilepath, CompressionMode.Compress) ? 1 : 0;
+                    result = compressor.Start(filepath, resultFilepath, CompressionMode.Compress) ? 1 : 0;
                 }
+#else
+                CheckArguments(args, out string filepath, out string command, out string resultFilepath);
+                CompressionMode mode = command == "compress" ? CompressionMode.Compress : CompressionMode.Decompress;
+                compressor.Start(filepath, resultFilepath, mode);
+#endif
             }
             catch (Exception ex)
             {
@@ -46,7 +46,9 @@ namespace MyCompressor
                 result = 0;
             }
 
-            MyLogger.ShowLog();
+            if (result == 0)
+                MyLogger.ShowLog();
+
             Console.WriteLine(result);
 
             Console.ReadKey();

@@ -1,19 +1,15 @@
 ﻿using MyCompressor.Structures;
-using System;
-using System.Collections.Generic;
 using System.IO.Compression;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace MyCompressor.Services
 {
     internal interface IReaderAsync
     {
-        ulong BlockCount { get; }
-        int CurBlock { get; }
+        long BlockCount { get; }
+        long CurBlock { get; }
+        bool IsActive { get; }
         void StartReader(string filepath, CompressionMode mode);
-        Task<DataBlock> ReadNextBlock();
+        Task<(bool, DataBlock)> ReadNextBlock();
         void FinishWork();
     }
 }

@@ -11,45 +11,11 @@ namespace MyCompressor.Services
         private readonly ConcurrentQueue<DataBlock> dataFromFile = new();
 
         private long decompressedOffset = 8;
-
-
-        public async Task<(bool, DataBlock)> ReadNextBlock()
-        {
-            while (true)
-            {
-                if (dataFromFile.TryDequeue(out DataBlock data))
-                    return (true, data);
-
-                if (!IsActive)
-                    return (false, default);
-
-                await Task.Delay(100);
-            }
-        }
-
-        public void FinishWork()
-        {
-            cts.Cancel();
-            IsActive = false;
-        }
-
         public ReaderAsync()
         {
             if (!int.TryParse(ConfigurationManager.AppSettings["readerCapacity"], out maxCapacity))
             {
                 MyLogger.AddMessage("Reader can not get max capacity from configuration. It's work was terminated.");
-                return;
-            }
-
-            if (!int.TryParse(ConfigurationManager.AppSettings["flushPeriodReader"], out flushPeriod))
-            {
-                MyLogger.AddMessage("Reader can not get flush period from configuration. It's work was terminated.");
-                return;
-            }
-
-            if (flushPeriod < 1 || flushPeriod > 256)
-            {
-                MyLogger.AddMessage("Reader: Flush period should be in range [1;256]. It's work was terminated.");
                 return;
             }
 
@@ -87,6 +53,26 @@ namespace MyCompressor.Services
             IsActive = true;
         }
 
+        public async Task<(bool, DataBlock)> ReadNextBlock()
+        {
+            while (true)
+            {
+                if (dataFromFile.TryDequeue(out DataBlock data))
+                    return (true, data);
+
+                if (!IsActive)
+                    return (false, default);
+
+                await Task.Delay(100);
+            }
+        }
+
+        public void FinishWork()
+        {
+            cts.Cancel();
+            IsActive = false;
+        }
+
         private void ReadFromFile(string filepath)
         {
             CurBlock = 0;
@@ -103,81 +89,83 @@ namespace MyCompressor.Services
 
                 using (FileStream file = File.Open(filepath, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
-                    //try
-                    //{
-                    while (dataFromFile.Count <= maxCapacity && file.Position < file.Length)
+                    try
                     {
-                        if (mode == CompressionMode.Compress)
+                        while (dataFromFile.Count <= maxCapacity && file.Position < file.Length)
                         {
-                            long offset = CurBlock * blockSize;
-                            file.Seek(offset, SeekOrigin.Begin);
-
-                            int length =
-                                file.Length - file.Position <= blockSize
-                                ? (int)(file.Length - file.Position)
-                                : blockSize;
-
-                            byte[] buffer = new byte[length];
-                            file.Read(buffer, 0, length);
-                            DataBlock data = new()
+                            if (mode == CompressionMode.Compress)
                             {
-                                Data = buffer,
-                                OrigignalSize = length,
-                                Id = CurBlock
-                            };
-                            dataFromFile.Enqueue(data);
-                            CurBlock++;
+                                long offset = CurBlock * blockSize;
+                                file.Seek(offset, SeekOrigin.Begin);
+
+                                int length =
+                                    file.Length - file.Position <= blockSize
+                                    ? (int)(file.Length - file.Position)
+                                    : blockSize;
+
+                                byte[] buffer = new byte[length];
+                                file.Read(buffer, 0, length);
+                                DataBlock data = new()
+                                {
+                                    Data = buffer,
+                                    OrigignalSize = length,
+                                    Id = CurBlock
+                                };
+                                dataFromFile.Enqueue(data);
+                                CurBlock++;
+                            }
+                            else
+                            {
+                                file.Seek(decompressedOffset, SeekOrigin.Begin);
+
+                                byte[] dataLength = new byte[4];
+                                file.Read(dataLength, 0, dataLength.Length);
+                                decompressedOffset += dataLength.Length;
+
+                                file.Seek(decompressedOffset, SeekOrigin.Begin);
+
+                                byte[] originalSizeBytes = new byte[4];
+                                file.Read(originalSizeBytes, 0, originalSizeBytes.Length);
+                                decompressedOffset += originalSizeBytes.Length;
+
+                                int compressedBlockSize = BitConverter.ToInt32(dataLength);
+                                int originalSize = BitConverter.ToInt32(originalSizeBytes);
+                                file.Seek(decompressedOffset, SeekOrigin.Begin);
+
+                                byte[] buffer = new byte[compressedBlockSize];
+                                file.Read(buffer, 0, compressedBlockSize);
+
+                                DataBlock data = new()
+                                {
+                                    Data = buffer,
+                                    OrigignalSize = originalSize,
+                                    Id = CurBlock
+                                };
+                                decompressedOffset += compressedBlockSize;
+                                dataFromFile.Enqueue(data);
+                                CurBlock++;
+                            }
+                            file.Flush();
+
+                            GC.Collect();
                         }
-                        else
+
+                        Thread.Sleep(50);
+                        if (CurBlock == BlockCount)
                         {
-                            file.Seek(decompressedOffset, SeekOrigin.Begin);
+                            while (!dataFromFile.IsEmpty)
+                                Thread.Sleep(200);
 
-                            byte[] dataLength = new byte[4];
-                            file.Read(dataLength, 0, dataLength.Length);
-                            decompressedOffset += dataLength.Length;
-
-                            file.Seek(decompressedOffset, SeekOrigin.Begin);
-
-                            byte[] originalSizeBytes = new byte[4];
-                            file.Read(originalSizeBytes, 0, originalSizeBytes.Length);
-                            decompressedOffset += originalSizeBytes.Length;
-
-                            int compressedBlockSize = BitConverter.ToInt32(dataLength);
-                            int originalSize = BitConverter.ToInt32(originalSizeBytes);
-                            file.Seek(decompressedOffset, SeekOrigin.Begin);
-
-                            byte[] buffer = new byte[compressedBlockSize];
-                            file.Read(buffer, 0, compressedBlockSize);
-
-                            DataBlock data = new()
-                            {
-                                Data = buffer,
-                                OrigignalSize = originalSize,
-                                Id = CurBlock
-                            };
-                            decompressedOffset += compressedBlockSize;
-                            dataFromFile.Enqueue(data);
-                            CurBlock++;
+                            MyLogger.AddMessage("Reader finished it's work.");
+                            IsActive = false;
+                            break;
                         }
-                        file.Flush();
                     }
-
-                    Thread.Sleep(50);
-                    if (CurBlock == BlockCount)
+                    catch (Exception ex)
                     {
-                        while (!dataFromFile.IsEmpty)
-                            Thread.Sleep(200);
-
-                        MyLogger.AddMessage("Reader finished it's work.");
-                        IsActive = false;
-                        break;
+                        MyLogger.AddMessage("Exception while reading: " + ex.Message);
+                        return;
                     }
-                    //}
-                    //catch (Exception ex)
-                    //{
-                    //    MyLogger.AddMessage(ex.Message);
-                    //    break;
-                    //}
                 }
             }
         }

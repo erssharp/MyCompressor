@@ -10,7 +10,6 @@ namespace MyCompressor.Services
         bool IsActive { get; }
         void StartWriter(string filepath, long blockCount, CompressionMode mode);
         Task WriteData(DataBlock data);
-        Task WaitTillFinish();
         void Abort();
         Task FinishWork();
     }

@@ -10,14 +10,10 @@ namespace MyCompressor.Compressors
     {
         private readonly List<Task> tasks = new();
 
-        public GZIPCompressor()
-        {
-        }
-
         public bool Start(string filepath, string resultFilepath, CompressionMode mode)
         {
             IMultiThreadWriter writer = new MultiThreadWriter();
-            IReaderAsync reader = new ReaderAsync();          
+            IReaderAsync reader = new ReaderAsync();
             ProgressObserver.StartObserving(reader, writer);
 
             reader.StartReader(filepath, mode);
@@ -27,58 +23,65 @@ namespace MyCompressor.Compressors
             for (int i = 0; i < Environment.ProcessorCount; i++)
             {
                 Task task = new(() =>
-                {                    
-                    while (reader.IsActive)
+                {
+                    try
                     {
-                        (bool isSucceed, DataBlock data) = reader.ReadNextBlock().Result;
-                        if (!isSucceed) break;
-
-                        if (data.Data == null)
+                        while (reader.IsActive)
                         {
-                            MyLogger.AddMessage("Attemt to compress/decompress null data.");
-                            return;
-                        }
+                            (bool isSucceed, DataBlock data) = reader.ReadNextBlock().Result;
+                            if (!isSucceed) break;
 
-                        if (mode == CompressionMode.Compress)
-                        {
-                            using (MemoryStream memory = new())
+                            if (data.Data == null)
                             {
-                                using (MemoryStream dataStream = new(data.Data))
-                                using (GZipStream compressingStream = new(memory, mode))
-                                    dataStream.CopyTo(compressingStream);
+                                MyLogger.AddMessage("Attemt to compress/decompress null data.");
+                                return;
+                            }
 
-                                byte[] compressedData = memory.ToArray();
-
-                                DataBlock compressedBlock = new()
+                            if (mode == CompressionMode.Compress)
+                            {
+                                using (MemoryStream memory = new())
                                 {
-                                    Id = data.Id,
-                                    Data = compressedData,
-                                    OrigignalSize = data.OrigignalSize
-                                };
+                                    using (MemoryStream dataStream = new(data.Data))
+                                    using (GZipStream compressingStream = new(memory, mode))
+                                        dataStream.CopyTo(compressingStream);
 
-                                writer.WriteData(compressedBlock).Wait();
+                                    byte[] compressedData = memory.ToArray();
+
+                                    DataBlock compressedBlock = new()
+                                    {
+                                        Id = data.Id,
+                                        Data = compressedData,
+                                        OrigignalSize = data.OrigignalSize
+                                    };
+
+                                    writer.WriteData(compressedBlock).Wait();
+                                }
+                            }
+                            else
+                            {
+                                using (MemoryStream memory = new(new byte[data.OrigignalSize]))
+                                {
+                                    using (MemoryStream dataStream = new(data.Data))
+                                    using (GZipStream decompressingStream = new(dataStream, mode))
+                                        decompressingStream.CopyTo(memory);
+
+                                    byte[] decompressedData = memory.ToArray();
+
+                                    DataBlock decompressedBlock = new()
+                                    {
+                                        Id = data.Id,
+                                        Data = decompressedData,
+                                        OrigignalSize = data.OrigignalSize
+                                    };
+
+                                    writer.WriteData(decompressedBlock).Wait();
+                                }
                             }
                         }
-                        else
-                        {
-                            using (MemoryStream memory = new(new byte[data.OrigignalSize]))
-                            {
-                                using (MemoryStream dataStream = new(data.Data))
-                                using (GZipStream decompressingStream = new(dataStream, mode))
-                                    decompressingStream.CopyTo(memory);
-
-                                byte[] decompressedData = memory.ToArray();
-
-                                DataBlock decompressedBlock = new()
-                                {
-                                    Id = data.Id,
-                                    Data = decompressedData,
-                                    OrigignalSize = data.OrigignalSize
-                                };
-
-                                writer.WriteData(decompressedBlock).Wait();
-                            }
-                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MyLogger.AddMessage("Exception while compressing: " + ex.Message);
                     }
 
                     while (writer.CurBlock < writer.BlockCount)
@@ -90,10 +93,34 @@ namespace MyCompressor.Compressors
             }
 
             Task.WaitAll(tasks.ToArray());
+
+            foreach (var task in tasks)
+            {
+                if (task.IsFaulted)
+                {
+                    MyLogger.AddMessage("Unhandled exception while compressing.");
+                    return false;
+                }
+            }
+
             ProgressObserver.FinishObserving();
-            reader.FinishWork();
-            writer.FinishWork();
-            ProgressObserver.FinishObserving();
+
+            if (reader.CurBlock < reader.BlockCount)
+            {
+                MyLogger.AddMessage("Reader didn't finish reading.");
+                return false;
+            }
+
+            if (writer.CurBlock < writer.BlockCount)
+            {
+                MyLogger.AddMessage("Writer didn't finish writing.");
+                return false;
+            }
+
+            if (reader.IsActive)
+                reader.FinishWork();
+            if (writer.IsActive)
+                writer.FinishWork();
 
             return true;
         }

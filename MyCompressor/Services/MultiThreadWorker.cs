@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO.Compression;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.IO.Compression;
 
 namespace MyCompressor.Services
 {
@@ -15,10 +10,9 @@ namespace MyCompressor.Services
         protected readonly object blockCur = new();
 
         protected CancellationToken token;
+        protected CompressionMode mode;
         protected int maxCapacity;
         protected int blockSize;
-        protected int flushPeriod;
-        protected CompressionMode mode;
 
         protected long curBlock = 0;
         public long CurBlock

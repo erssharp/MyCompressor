@@ -1,17 +1,11 @@
 ﻿using MyCompressor.Compressors;
-using MyCompressor.Services;
-using System;
-using System.Collections.Generic;
 using System.IO.Compression;
-using System.Linq;
-using System.Configuration;
 using MyCompressor.Logger;
 
 namespace MyCompressor
 {
     public class Program
     {
-        readonly static HashSet<string> availableCommands = new() { };
         public static void Main(string[] args)
         {
             int result = -1;
@@ -19,7 +13,7 @@ namespace MyCompressor
             {
                 GZIPCompressor compressor = new();
 #if DEBUG
-                if (true)
+                if (false)
                 {
                     string resultFilepath = @"C:\Users\ernestteregulov\Downloads\SpaceSweepers.mp4";
                     string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\space.gz";
@@ -30,7 +24,7 @@ namespace MyCompressor
                 {
                     string filepath = @"C:\Users\ernestteregulov\Downloads\SpaceSweepers.1080p.WEBRip.x264.AAC.Zetflix.mp4";
                     string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\space.gz";
-                    if(File.Exists(resultFilepath)) File.Delete(resultFilepath);
+                    if (File.Exists(resultFilepath)) File.Delete(resultFilepath);
                     result = compressor.Start(filepath, resultFilepath, CompressionMode.Compress) ? 1 : 0;
                 }
 #else

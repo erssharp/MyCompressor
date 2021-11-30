@@ -10,11 +10,14 @@ namespace MyCompressor.Services
         protected readonly object blockCur = new();
 
         protected CancellationToken token;
-        protected CompressionMode mode;
         protected int maxCapacity;
         protected int blockSize;
 
         protected long curBlock = 0;
+
+        protected SemaphoreSlim? pool;
+        public ManualResetEventSlim ResetEvent { get; protected set; }
+
         public long CurBlock
         {
             get
@@ -70,6 +73,12 @@ namespace MyCompressor.Services
                 }
 
             }
+        }
+
+        public void FinishWork()
+        {
+            cts.Cancel();
+            IsActive = false;
         }
     }
 }

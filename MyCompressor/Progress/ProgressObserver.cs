@@ -5,11 +5,13 @@ namespace MyCompressor.Progress
 {
     internal static class ProgressObserver
     {
+        public static ManualResetEventSlim ResetEvent { get; private set; }
         private readonly static CancellationTokenSource cts = new();
         private readonly static CancellationToken token;
 
         static ProgressObserver()
         {
+            ResetEvent = new ManualResetEventSlim(false);
             token = cts.Token;
         }
 
@@ -28,7 +30,7 @@ namespace MyCompressor.Progress
                     Console.Out.WriteLine($"CPU Load: {cpuLoad} %");
                     Console.Out.WriteLine($"Disc Drive Load: {discLoad} %");
                     if (token.IsCancellationRequested) return;
-                    Thread.Sleep(250);
+                    Thread.Sleep(200);
                 }
             }, token).ContinueWith(ShowFinishingStatistics);
         }
@@ -42,6 +44,7 @@ namespace MyCompressor.Progress
             Console.WriteLine($"Average CPU Load: {avgCpuLoad} %");
             Console.WriteLine($"Average Disc Drive Load: {avgDiscLoad} %");
             Console.WriteLine(new string('-', 80));
+            ResetEvent.Set();
         }
     }
 }

@@ -8,13 +8,33 @@ namespace MyCompressor
     {
         public static void Main(string[] args)
         {
-            int result;
+            int result = -1;
             try
             {
-                GZIPCompressor compressor = new();
+                
+#if DEBUG
+                if (true)
+                {
+                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\nwdll.dll";
+                    string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\nwdll.gz";
+                    if (File.Exists(resultFilepath)) File.Delete(resultFilepath);
+                    GZIPCompressor compressor = new(CompressionMode.Decompress);
+                    result = compressor.Start(filepath, resultFilepath) ? 1 : 0;
+                }
+                else
+                {
+                    string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\nw.dll";
+                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\nwdll.gz";
+                    if(File.Exists(resultFilepath)) File.Delete(resultFilepath);
+                    GZIPCompressor compressor = new(CompressionMode.Compress);
+                    result = compressor.Start(filepath, resultFilepath) ? 1 : 0;
+                }
+#else
                 CheckArguments(args, out string filepath, out string command, out string resultFilepath);
                 CompressionMode mode = command == "compress" ? CompressionMode.Compress : CompressionMode.Decompress;
-                result = compressor.Start(filepath, resultFilepath, mode) ? 1 : 0;
+                GZIPCompressor compressor = new(mode);
+                result = compressor.Start(filepath, resultFilepath) ? 1 : 0;
+#endif
             }
             catch (Exception ex)
             {
@@ -34,7 +54,7 @@ namespace MyCompressor
         private static void CheckArguments(string[] args, out string filepath, out string command, out string resultFilepath)
         {
             if (args.Length != 3)
-                throw new ArgumentException("Wrong count of arguments. \nAcceptable signature: [command (compress/decompress)] [filepath] [result filepath].\nCheck if you have spaces in your folder's name.");
+                throw new ArgumentException("Wrong count of arguments. \nAcceptable signature: [command (compress/decompress)] [filepath] [result filepath]");
 
             command = args[0];
             filepath = args[1];

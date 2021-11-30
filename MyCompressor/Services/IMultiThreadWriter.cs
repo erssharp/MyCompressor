@@ -8,9 +8,9 @@ namespace MyCompressor.Services
         long BlockCount { get; }
         long CurBlock { get; }
         bool IsActive { get; }
-        void StartWriter(string filepath, long blockCount, CompressionMode mode);
-        Task WriteData(DataBlock data);
-        void Abort();
-        Task FinishWork();
+        ManualResetEventSlim ResetEvent { get; }
+        void StartWriter(string filepath, long blockCount);
+        void WriteData(DataBlock data);      
+        void FinishWork();
     }
 }

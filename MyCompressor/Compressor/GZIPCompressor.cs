@@ -3,126 +3,69 @@ using MyCompressor.Logger;
 using MyCompressor.Services;
 using MyCompressor.Structures;
 using MyCompressor.Progress;
+using MyCompressor.Tools.Scheduler;
+using MyCompressor.Tools.Validating;
+using MyCompressor.Tools.MultiThread;
 
 namespace MyCompressor.Compressors
 {
     internal class GZIPCompressor
     {
         private readonly List<Task> tasks = new();
+        private readonly ICompressorTool tool;
+        private readonly IMultiThreadWriter writer;
+        private readonly IReaderAsync reader;
 
-        public bool Start(string filepath, string resultFilepath, CompressionMode mode)
+        public GZIPCompressor(CompressionMode mode)
         {
-            IMultiThreadWriter writer = new MultiThreadWriter();
-            IReaderAsync reader = new ReaderAsync();
+            writer = new MultiThreadWriter(mode);
+            reader = new ReaderAsync(mode);
+            tool = mode == CompressionMode.Compress ? new CompressingTool() : new DecompressingTool();
+        }
+
+        public bool Start(string filepath, string resultFilepath)
+        {
             ProgressObserver.StartObserving(reader, writer);
-
-            reader.StartReader(filepath, mode);
+            reader.StartReader(filepath);
             long blockCount = reader.BlockCount;
-            writer.StartWriter(resultFilepath, blockCount, mode);
+            writer.StartWriter(resultFilepath, blockCount);
+            LimitedConcurrencyScheduler scheduler = new();
 
-            for (int i = 0; i < Environment.ProcessorCount; i++)
+            for (int i = 0; i < blockCount; i++)
             {
-                Task task = new(() =>
-                {
-                    try
-                    {
-                        while (reader.IsActive)
-                        {
-                            (bool isSucceed, DataBlock data) = reader.ReadNextBlock().Result;
-                            if (!isSucceed) break;
-
-                            if (data.Data == null)
-                            {
-                                MyLogger.AddMessage("Attemt to compress/decompress null data.");
-                                return;
-                            }
-
-                            if (mode == CompressionMode.Compress)
-                            {
-                                using (MemoryStream memory = new())
-                                {
-                                    using (MemoryStream dataStream = new(data.Data))
-                                    using (GZipStream compressingStream = new(memory, mode))
-                                        dataStream.CopyTo(compressingStream);
-
-                                    byte[] compressedData = memory.ToArray();
-
-                                    DataBlock compressedBlock = new()
-                                    {
-                                        Id = data.Id,
-                                        Data = compressedData,
-                                        OrigignalSize = data.OrigignalSize
-                                    };
-
-                                    writer.WriteData(compressedBlock).Wait();
-                                }
-                            }
-                            else
-                            {
-                                using (MemoryStream memory = new(new byte[data.OrigignalSize]))
-                                {
-                                    using (MemoryStream dataStream = new(data.Data))
-                                    using (GZipStream decompressingStream = new(dataStream, mode))
-                                        decompressingStream.CopyTo(memory);
-
-                                    byte[] decompressedData = memory.ToArray();
-
-                                    DataBlock decompressedBlock = new()
-                                    {
-                                        Id = data.Id,
-                                        Data = decompressedData,
-                                        OrigignalSize = data.OrigignalSize
-                                    };
-
-                                    writer.WriteData(decompressedBlock).Wait();
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        MyLogger.AddMessage("Exception while compressing: " + ex.Message);
-                    }
-
-                    while (writer.CurBlock < writer.BlockCount)
-                        Thread.Sleep(100);
-                });
-
+                Task task = new(() => ProcessBlock(reader, writer));
                 tasks.Add(task);
-                task.Start();
+                task.Start(scheduler);
             }
 
+            reader.ResetEvent.Wait();         
             Task.WaitAll(tasks.ToArray());
-
-            foreach (var task in tasks)
-            {
-                if (task.IsFaulted)
-                {
-                    MyLogger.AddMessage("Unhandled exception while compressing.");
-                    return false;
-                }
-            }
+            writer.ResetEvent.Wait();
 
             ProgressObserver.FinishObserving();
+            ProgressObserver.ResetEvent.Wait();
 
-            if (reader.CurBlock < reader.BlockCount)
-            {
-                MyLogger.AddMessage("Reader didn't finish reading.");
-                return false;
-            }
-
-            if (writer.CurBlock < writer.BlockCount)
-            {
-                MyLogger.AddMessage("Writer didn't finish writing.");
-                return false;
-            }
-
-            if (reader.IsActive)
-                reader.FinishWork();
-            if (writer.IsActive)
-                writer.FinishWork();
+            if (Validator.HasExceptions(tasks)) return false;
+            if (Validator.WorkNotFinished(reader)) return false;
+            if (Validator.WorkNotFinished(writer)) return false;
 
             return true;
+        }
+
+        private void ProcessBlock(IReaderAsync reader, IMultiThreadWriter writer)
+        {
+            try
+            {
+                (bool isSucceed, DataBlock data) = reader.ReadNextBlock();
+                if (!isSucceed) throw new NullReferenceException("Error while reading");
+
+                DataBlock result = tool.Process(data);
+                writer.WriteData(result);
+            }
+            catch (Exception ex)
+            {
+                MyLogger.AddMessage("Exception while compressing: " + ex.Message);
+            }
         }
     }
 }

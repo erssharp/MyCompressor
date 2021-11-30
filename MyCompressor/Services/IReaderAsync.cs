@@ -8,8 +8,9 @@ namespace MyCompressor.Services
         long BlockCount { get; }
         long CurBlock { get; }
         bool IsActive { get; }
-        void StartReader(string filepath, CompressionMode mode);
-        Task<(bool, DataBlock)> ReadNextBlock();
+        ManualResetEventSlim ResetEvent { get; }
+        void StartReader(string filepath);
+        (bool, DataBlock) ReadNextBlock();
         void FinishWork();
     }
 }

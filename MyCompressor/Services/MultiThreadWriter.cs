@@ -3,70 +3,51 @@ using System.Configuration;
 using MyCompressor.Logger;
 using System.IO.Compression;
 using MyCompressor.Structures;
+using MyCompressor.Tools.MultiThread;
 
 namespace MyCompressor.Services
 {
     internal class MultiThreadWriter : MultiThreadWorker, IMultiThreadWriter
     {
         private readonly static ConcurrentDictionary<long, DataBlock> dataToWrite = new();
+        private readonly IWriterTool tool;
 
-        public MultiThreadWriter()
+        public MultiThreadWriter(CompressionMode mode)
         {
+            tool = mode == CompressionMode.Compress ? new WriterCompressingTool() : new WriterDecompressingTool();
+            ResetEvent = new ManualResetEventSlim(false);
+            
             if (!int.TryParse(ConfigurationManager.AppSettings["writerCapacity"], out maxCapacity))
             {
                 MyLogger.AddMessage("Writer can not get max capacity from configuration. It's work was terminated.");
                 return;
-            }
+            }           
+
+            pool = new SemaphoreSlim(0, maxCapacity);
 
             token = cts.Token;
         }
 
-        public void StartWriter(string filepath, long blockCount, CompressionMode mode)
+        public void StartWriter(string filepath, long blockCount)
         {
             if (IsActive) return;
-            this.mode = mode;
             BlockCount = blockCount;
             MyLogger.AddMessage("Writer started it's work");
             IsActive = true;
             Task.Run(() => WriteToFile(filepath), token);
         }
 
-        public async Task WriteData(DataBlock data)
+        public void WriteData(DataBlock data)
         {
-            if (!IsActive) return;
-
-            while (dataToWrite.Count > maxCapacity)
-                await Task.Delay(50);
-
-            if (data.Data != null)
-            {
-                if (!dataToWrite.TryAdd(data.Id, data))
-                {
-                    MyLogger.AddMessage("Attempt to add another element with same block id.");
-                    Abort();
-                }
-            }
-            else
-            {
-                MyLogger.AddMessage("Attempt to write null.");
-                Abort();
-            }
+            dataToWrite.TryAdd(data.Id, data);
+            pool?.Release();
         }
 
-        public async Task FinishWork()
+        private void Stop()
         {
-            while (true)
-                if (!dataToWrite.IsEmpty)
-                    await Task.Delay(100);
-                else break;
-
-            Abort();
-        }
-
-        public void Abort()
-        {
-            cts.Cancel();
+            MyLogger.AddMessage("Writer finished it's work.");
             IsActive = false;
+            ResetEvent.Set();
         }
 
         private void WriteToFile(string filepath)
@@ -75,17 +56,9 @@ namespace MyCompressor.Services
 
             while (true)
             {
-                if (token.IsCancellationRequested)
+                if (token.IsCancellationRequested || (CurBlock == BlockCount && dataToWrite.IsEmpty))
                 {
-                    MyLogger.AddMessage("Writer finished it's work.");
-                    IsActive = false;
-                    return;
-                }
-
-                if (CurBlock == BlockCount && dataToWrite.IsEmpty)
-                {
-                    MyLogger.AddMessage("Writer finished it's work.");
-                    IsActive = false;
+                    Stop();
                     return;
                 }
 
@@ -94,33 +67,12 @@ namespace MyCompressor.Services
                     try
                     {
                         while (dataToWrite.TryRemove(CurBlock, out DataBlock data))
-                        {
-                            if (mode == CompressionMode.Compress)
-                            {
-                                if (CurBlock == 0)
-                                {
-                                    byte[] length = BitConverter.GetBytes(BlockCount);
-                                    file.Write(length, 0, 8);
-                                }
-
-                                byte[] dataLength = BitConverter.GetBytes(data.Length);
-                                file.Write(dataLength);
-                                byte[] originalSize = BitConverter.GetBytes(data.OrigignalSize);
-                                file.Write(originalSize);
-                            }
-
-                            if (data.Data != null)
-                                file.Write(data.Data);
-                            else
-                            {
-                                MyLogger.AddMessage("Attempt to write null.");
-                                IsActive = false;
-                                return;
-                            }
-                            CurBlock++;
-
+                        {                        
+                            tool.Write(file, data, BlockCount, ref curBlock);
                             file.Flush();
                             GC.Collect();
+
+                            pool?.Wait();
                         }
                     }
                     catch (Exception ex)
@@ -128,8 +80,6 @@ namespace MyCompressor.Services
                         MyLogger.AddMessage("Exception while writing: " + ex.Message);
                         return;
                     }
-
-                    Thread.Sleep(50);
                 }
             }
         }

@@ -79,13 +79,6 @@ namespace MyCompressor.Services
             return (false, default);
         }
 
-        private void Stop()
-        {
-            MyLogger.AddMessage("Reader finished it's work.");
-            IsActive = false;
-            ResetEvent.Set();
-        }
-
         private void ReadFromFile(string filepath)
         {
             CurBlock = 0;
@@ -95,7 +88,7 @@ namespace MyCompressor.Services
             {
                 if (token.IsCancellationRequested)
                 {
-                    Stop();
+                    FinishWork();
                     return;
                 }
 
@@ -117,7 +110,7 @@ namespace MyCompressor.Services
 
                         if (CurBlock == BlockCount)
                         {
-                            Stop();
+                            FinishWork();
                             return;
                         }
                     }

@@ -43,13 +43,6 @@ namespace MyCompressor.Services
             pool?.Release();
         }
 
-        private void Stop()
-        {
-            MyLogger.AddMessage("Writer finished it's work.");
-            IsActive = false;
-            ResetEvent.Set();
-        }
-
         private void WriteToFile(string filepath)
         {
             CurBlock = 0;
@@ -58,7 +51,7 @@ namespace MyCompressor.Services
             {
                 if (token.IsCancellationRequested || (CurBlock == BlockCount && dataToWrite.IsEmpty))
                 {
-                    Stop();
+                    FinishWork();
                     return;
                 }
 

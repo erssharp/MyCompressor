@@ -10,31 +10,11 @@ namespace MyCompressor
         {
             int result = -1;
             try
-            {
-                
-#if DEBUG
-                if (true)
-                {
-                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\nwdll.dll";
-                    string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\nwdll.gz";
-                    if (File.Exists(resultFilepath)) File.Delete(resultFilepath);
-                    GZIPCompressor compressor = new(CompressionMode.Decompress);
-                    result = compressor.Start(filepath, resultFilepath) ? 1 : 0;
-                }
-                else
-                {
-                    string filepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\nw.dll";
-                    string resultFilepath = @"C:\Users\ernestteregulov\source\repos\MyCompressor\MyCompressor\bin\Debug\net6.0\nwdll.gz";
-                    if(File.Exists(resultFilepath)) File.Delete(resultFilepath);
-                    GZIPCompressor compressor = new(CompressionMode.Compress);
-                    result = compressor.Start(filepath, resultFilepath) ? 1 : 0;
-                }
-#else
+            {             
                 CheckArguments(args, out string filepath, out string command, out string resultFilepath);
                 CompressionMode mode = command == "compress" ? CompressionMode.Compress : CompressionMode.Decompress;
                 GZIPCompressor compressor = new(mode);
                 result = compressor.Start(filepath, resultFilepath) ? 1 : 0;
-#endif
             }
             catch (Exception ex)
             {

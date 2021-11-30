@@ -1,4 +1,5 @@
-﻿using System.IO.Compression;
+﻿using MyCompressor.Logger;
+using System.IO.Compression;
 
 namespace MyCompressor.Services
 {
@@ -77,8 +78,10 @@ namespace MyCompressor.Services
 
         public void FinishWork()
         {
-            cts.Cancel();
+            MyLogger.AddMessage("Worker finished it's work.");
             IsActive = false;
+            ResetEvent.Set();
+            cts.Cancel();
         }
     }
 }
